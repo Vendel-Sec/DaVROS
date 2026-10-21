@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+
+# Editors and OS
+.idea/
+*.swp
+.DS_Store
+
+# The active posture overlay. target.env is the hardened baseline and is
+# tracked; preset.env is whichever scenario is currently selected, so it is
+# local state and not configuration.
+simulated_target/posture/preset.env
+
+# Filesystem exports, extracted keystores and captures from the demos
+demo/evidence/
+*.pcap
+unblob.log

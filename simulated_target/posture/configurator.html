@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DaVROS Posture</title>
+<style>
+  /* Palette of the DaVROS diagrams: teal #1F9E89 on #F8F9FA, burnt orange
+     #C46A30 for the boxes that stand out. The brand teal is 3.3:1 against
+     white, so it marks lines, tracks and bars, and --accent-strong (5.2:1)
+     carries text and filled controls. The diagrams are light only; the dark
+     theme takes the brighter #00BD9D teal from the enclave diagram. */
+  :root {
+    --bg: #f8f9fa; --surface: #ffffff; --border: #eef1f4; --border-strong: #adb5bd;
+    --text: #121314; --muted: #555555; --subtle: #808080;
+    --accent: #1f9e89; --accent-strong: #167a6a; --accent-soft: #e6f6f3; --on-accent: #ffffff;
+    --changed: #c46a30; --changed-text: #a4541f; --changed-soft: #fbf1ea;
+    --ok: #167a6a; --err: #b42318; --track: #adb5bd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121314; --surface: #1b1d1f; --border: #2a2e33; --border-strong: #4a5057;
+      --text: #f2f2f2; --muted: #adb5bd; --subtle: #868e96;
+      --accent: #00bd9d; --accent-strong: #00bd9d; --accent-soft: #11302b; --on-accent: #121314;
+      --changed: #e8955c; --changed-text: #e8955c; --changed-soft: #2a1f17;
+      --ok: #00bd9d; --err: #ff7b72; --track: #4a5057;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 Geist, Aptos, "Segoe UI", system-ui, Arial, sans-serif;
+  }
+  code, pre, .mono { font-family: "Geist Mono", ui-monospace, Consolas, "Courier New", monospace; }
+  header { padding: 20px 16px 8px; max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 0 16px 120px; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 6px; }
+  .chip {
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
+  .preset-desc { color: var(--muted); min-height: 1.45em; margin: 0 0 12px; }
+
+  section.card {
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 8px; margin: 14px 0; overflow: hidden;
+  }
+  section.card h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 0; padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 20px;
+    align-items: center; padding: 10px 16px; border-left: 4px solid transparent;
+  }
+  .row + .row { border-top: 1px solid var(--border); }
+  .row.changed { border-left-color: color-mix(in srgb, var(--changed) 70%, transparent); background: var(--changed-soft); }
+  .row.inactive .control { opacity: .45; }
+  .name { font-weight: 600; }
+  .leaf {
+    display: inline-block; font-size: 11px; padding: 0 6px; margin-left: 6px;
+    border-radius: 4px; background: var(--accent-soft); color: var(--accent-strong);
+    vertical-align: 1px;
+  }
+  .help { color: var(--muted); font-size: 13px; }
+  .var { color: var(--subtle); font-size: 12px; }
+  .baseline { color: var(--changed-text); font-size: 12px; }
+  .baseline button {
+    border: 0; background: none; color: inherit; text-decoration: underline;
+    cursor: pointer; font: inherit; padding: 0;
+  }
+  .control { justify-self: end; }
+
+  .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .switch .track {
+    width: 40px; height: 22px; border-radius: 11px; background: var(--track);
+    position: relative; transition: background .15s;
+  }
+  .switch .track::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s;
+  }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track::after { transform: translateX(18px); }
+  .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .switch .state { width: 34px; color: var(--muted); }
+
+  .radios {
+    display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border-strong);
+    border-radius: 8px; overflow: hidden;
+  }
+  .radios label { position: relative; cursor: pointer; }
+  .radios input { position: absolute; opacity: 0; }
+  .radios span { display: block; padding: 4px 10px; border-left: 1px solid var(--border-strong); }
+  .radios label:first-child span { border-left: 0; }
+  .radios input:checked + span { background: var(--accent-strong); color: var(--on-accent); }
+  .radios input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  input[type=text] {
+    font: inherit; padding: 4px 8px; width: 180px; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border-strong); border-radius: 6px;
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input[type=text].invalid { border-color: var(--err); }
+
+  .extra { color: var(--muted); }
+  details { margin: 14px 0; }
+  summary { cursor: pointer; color: var(--muted); }
+  pre {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; margin: 8px 0 0;
+  }
+
+  footer {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  .bar {
+    max-width: 1040px; margin: 0 auto; padding: 10px 16px;
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+  }
+  .summary { flex: 1 1 220px; }
+  .summary .msg { color: var(--muted); font-size: 13px; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+  .btn {
+    font: inherit; border-radius: 8px; padding: 6px 14px; cursor: pointer;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  }
+  .btn.primary { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); font-weight: 600; }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  @media (max-width: 640px) {
+    .row { grid-template-columns: minmax(0, 1fr); }
+    .control { justify-self: start; }
+    input[type=text] { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>DaVROS posture</h1>
+  <p class="sub">Writes <code>simulated_target/posture/preset.env</code> over the hardened
+    <code>target.env</code>. Highlighted knobs differ from the baseline.</p>
+</header>
+<main>
+  <div class="presets" id="presets" role="group" aria-label="Presets"></div>
+  <p class="preset-desc" id="preset-desc"></p>
+  <div id="form"></div>
+  <details>
+    <summary>preset.env preview</summary>
+    <pre id="preview"></pre>
+  </details>
+  <details id="output-box" hidden>
+    <summary>docker compose output</summary>
+    <pre id="output"></pre>
+  </details>
+</main>
+<footer>
+  <div class="bar">
+    <div class="summary">
+      <div id="count"></div>
+      <div class="msg" id="msg"></div>
+    </div>
+    <button class="btn" id="revert">Revert</button>
+    <button class="btn" id="save">Save</button>
+    <button class="btn primary" id="apply">Save and recreate target</button>
+  </div>
+</footer>
+
+<script>
+let state = null;      // as served by /api/state
+let saved = {};        // values in effect on disk
+let values = {};       // values in the form
+let preset = null;     // preset the form started from, if any
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, ...children) => {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c != null) node.append(c);
+  return node;
+};
+
+const baselineValues = () => Object.fromEntries(state.knobs.map((k) => [k.name, k.baseline]));
+const valid = (k, v) => ({
+  octal: /^0?[0-7]{3}$/, int: /^\d+$/,
+}[k.kind] ?? /^/).test(v) && /^[A-Za-z0-9_./,+:@*-]*$/.test(v);
+
+async function load() {
+  const res = await fetch("/api/state");
+  adopt(await res.json());
+}
+
+function adopt(s) {
+  state = s;
+  saved = Object.fromEntries(s.knobs.map((k) => [k.name, k.value]));
+  values = { ...saved };
+  preset = matchingPreset(saved);
+  render();
+}
+
+function presetValues(p) {
+  return { ...baselineValues(), ...p.values };
+}
+
+function matchingPreset(v) {
+  return state.presets.find((p) => {
+    const pv = presetValues(p);
+    return state.knobs.every((k) => pv[k.name] === v[k.name]);
+  })?.name ?? null;
+}
+
+function render() {
+  renderPresets();
+  const form = $("form");
+  form.replaceChildren();
+  const sections = [...new Set(state.knobs.map((k) => k.section))];
+  for (const section of sections) {
+    const card = el("section", { class: "card" }, el("h2", {}, section));
+    for (const k of state.knobs.filter((k) => k.section === section)) card.append(row(k));
+    form.append(card);
+  }
+  const extra = Object.entries(state.extra);
+  if (extra.length) {
+    form.append(el("section", { class: "card" },
+      el("h2", {}, "Kept from preset.env, not in target.env"),
+      ...extra.map(([n, v]) => el("div", { class: "row extra" }, el("span", { class: "mono" }, `${n}=${v}`)))));
+  }
+  update();
+}
+
+function renderPresets() {
+  const box = $("presets");
+  const isBaseline = state.knobs.every((k) => values[k.name] === k.baseline);
+  box.replaceChildren(
+    el("button", {
+      class: "chip" + (isBaseline ? " active" : ""), "aria-pressed": String(isBaseline),
+      onclick: () => { values = baselineValues(); preset = null; render(); },
+    }, "hardened"),
+    ...state.presets.map((p) => el("button", {
+      class: "chip" + (preset === p.name ? " active" : ""), "aria-pressed": String(preset === p.name),
+      title: p.description,
+      onclick: () => { values = presetValues(p); preset = p.name; render(); },
+    }, p.name)),
+  );
+  const current = state.presets.find((p) => p.name === preset);
+  $("preset-desc").textContent = current ? current.description
+    : isBaseline ? "Every knob at its hardened value." : "Custom posture.";
+}
+
+function row(k) {
+  const id = `k-${k.name}`;
+  const set = (v) => {
+    values[k.name] = v;
+    if (preset && presetValues(state.presets.find((p) => p.name === preset))[k.name] !== v) preset = null;
+    renderPresets();
+    update();
+  };
+  let control;
+  if (k.kind === "switch") {
+    const input = el("input", { type: "checkbox", id, checked: values[k.name] === "true" });
+    const stateText = el("span", { class: "state mono" }, values[k.name]);
+    input.addEventListener("change", () => {
+      stateText.textContent = String(input.checked);
+      set(String(input.checked));
+    });
+    control = el("label", { class: "switch" }, input, el("span", { class: "track" }), stateText);
+  } else if (k.kind === "radio") {
+    control = el("div", { class: "radios", role: "radiogroup", "aria-labelledby": `${id}-label` },
+      k.options.map((o) => el("label", {},
+        el("input", { type: "radio", name: id, value: o, checked: values[k.name] === o,
+                      onchange: () => set(o) }),
+        el("span", { class: "mono" }, o))));
+  } else {
+    const input = el("input", {
+      type: "text", id, value: values[k.name], spellcheck: "false", class: "mono",
+      placeholder: k.kind === "text" ? "(empty)" : null,
+    });
+    input.addEventListener("input", () => {
+      input.classList.toggle("invalid", !valid(k, input.value));
+      set(input.value);
+    });
+    control = input;
+  }
+  return el("div", { class: "row", "data-name": k.name },
+    el("div", {},
+      el("label", { class: "name", id: `${id}-label`, for: k.kind === "radio" ? null : id }, k.label),
+      k.leaves.map((l) => el("span", { class: "leaf mono" }, l)),
+      k.help ? el("div", { class: "help" }, k.help) : null,
+      el("div", { class: "var mono" }, k.name),
+      el("div", { class: "baseline" })),
+    el("div", { class: "control" }, control));
+}
+
+function update() {
+  let changed = 0, unsaved = 0, invalid = false;
+  for (const k of state.knobs) {
+    const r = document.querySelector(`.row[data-name="${k.name}"]`);
+    const differs = values[k.name] !== k.baseline;
+    changed += differs;
+    unsaved += values[k.name] !== saved[k.name];
+    invalid ||= !valid(k, values[k.name]);
+    r.classList.toggle("changed", differs);
+    r.classList.toggle("inactive", !!k.onlyWhen && values[k.onlyWhen[0]] !== k.onlyWhen[1]);
+    const note = r.querySelector(".baseline");
+    note.replaceChildren(...(differs ? [
+      `baseline: ${k.baseline || "(empty)"} · `,
+      el("button", { onclick: () => { values[k.name] = k.baseline; preset = matchingPreset(values); render(); } }, "reset"),
+    ] : []));
+  }
+  $("count").textContent = (changed ? `${changed} knob${changed > 1 ? "s" : ""} weakened from baseline` : "Hardened baseline")
+    + (unsaved ? ` · ${unsaved} unsaved` : "");
+  $("revert").disabled = !unsaved;
+  $("save").disabled = !unsaved || invalid;
+  $("apply").disabled = invalid;
+  $("preview").textContent = previewText();
+}
+
+function previewText() {
+  const lines = state.knobs.filter((k) => values[k.name] !== k.baseline).map((k) => `${k.name}=${values[k.name]}`);
+  lines.push(...Object.entries(state.extra).map(([n, v]) => `${n}=${v}`));
+  return lines.length ? lines.join("\n") : "(no preset.env: the target runs target.env as is)";
+}
+
+async function submit(recreate) {
+  const buttons = ["revert", "save", "apply"].map($);
+  buttons.forEach((b) => (b.disabled = true));
+  setMsg(recreate ? "Saving and recreating the target…" : "Saving…");
+  try {
+    const res = await fetch("/api/apply", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values, preset, recreate }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error);
+    adopt(body.state);
+    setMsg(body.ok ? body.message + (recreate ? " Target recreated." : "") : body.message + " Recreate failed.",
+           body.ok ? "ok" : "err");
+    if (recreate) {
+      $("output-box").hidden = false;
+      $("output-box").open = !body.ok;
+      $("output").textContent = body.output || "(no output)";
+    }
+  } catch (e) {
+    // fetch rejects with a TypeError only when the connection itself failed,
+    // so the save may well have happened: show what is on disk now.
+    if (e instanceof TypeError) {
+      await load().catch(() => {});
+      setMsg("Lost the connection before the result came back. The form shows the "
+             + "saved posture; the configurator's terminal shows any error.", "err");
+      return;
+    }
+    setMsg(String(e.message || e), "err");
+    update();
+  }
+}
+
+function setMsg(text, kind = "") {
+  $("msg").textContent = text;
+  $("msg").className = "msg " + kind;
+}
+
+$("revert").addEventListener("click", () => { values = { ...saved }; preset = matchingPreset(values); render(); setMsg(""); });
+$("save").addEventListener("click", () => submit(false));
+$("apply").addEventListener("click", () => submit(true));
+load().catch((e) => setMsg("Could not load the posture: " + e, "err"));
+</script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+# DaVROS: the attacker, the simulated ROS 2 target and its peer, on
+# one bridge network.
+#
+#   docker compose up -d --build
+#   cp simulated_target/posture/presets/all-open.env simulated_target/posture/preset.env
+#   docker compose up -d --force-recreate --wait target peer
+name: davros
+
+services:
+  attacker:
+    build:
+      context: attacker
+    image: davros-attacker:jazzy
+    container_name: davros-attacker
+    hostname: davros-attacker
+    volumes:
+      - .:/workspace:cached
+      # Read-only view of the keystore the simulated target generated.
+      - target-keystore:/target-keystore:ro
+    environment:
+      ROS_DOMAIN_ID: ${TARGET_DOMAIN_ID:-42}
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    cap_add:
+      - NET_RAW      # tcpdump on davrosnet
+      - NET_ADMIN
+    networks:
+      - davrosnet
+    command: sleep infinity
+
+  target:
+    build:
+      context: .
+      dockerfile: simulated_target/Dockerfile
+      args:
+        ROS_DISTRO: ${TARGET_ROS_DISTRO:-jazzy}
+    image: davros-target:${TARGET_ROS_DISTRO:-jazzy}
+    container_name: davros-target
+    hostname: davros-target
+    env_file:
+      # target.env is the hardened baseline
+      - simulated_target/posture/target.env
+      # preset.env is an optional overlay
+      - path: simulated_target/posture/preset.env
+        required: false
+    environment:
+      # The robot's DDS, independent of the posture preset: TARGET_RMW=rmw_cyclonedds_cpp
+      TARGET_RMW: ${TARGET_RMW:-rmw_fastrtps_cpp}
+    volumes:
+      - target-keystore:/keystore
+    cap_add:
+      - SYS_PTRACE
+    networks:
+      - davrosnet
+    # B.0.2's rosbridge when TARGET_ROSBRIDGE=true. It is unauthenticated, so
+    # the host publishes it on loopback only, never to the host's own network.
+    # davros-attacker reaches it at davros-target:9090 over davrosnet regardless.
+    ports:
+      - "127.0.0.1:9090:9090"
+    # Misconfigured target still starts.
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/keystore/.ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  # The peer, an operator station or another robot: a second address on
+  # davrosnet, so the robot's link is tappable.
+  peer:
+    image: davros-target:${TARGET_ROS_DISTRO:-jazzy}
+    container_name: davros-peer
+    hostname: davros-peer
+    user: "1500:1500"
+    depends_on:
+      target:
+        condition: service_healthy
+    entrypoint: ["/opt/davros/peer.sh"]
+    environment:
+      ROS_DOMAIN_ID: ${TARGET_DOMAIN_ID:-42}
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    volumes:
+      - target-keystore:/keystore:ro
+    networks:
+      - davrosnet
+    restart: "no"
+
+networks:
+  davrosnet:
+    driver: bridge
+    # Fast DDS uses multicast 239.255.0.1 for SPDP. A Linux bridge with no IGMP
+    # querier floods multicast to every port, so default discovery works here.
+    # If your host has a querier and discovery fails, set TARGET_INITIAL_PEER
+    # in target.env to fall back to unicast initial peers.
+    driver_opts:
+      com.docker.network.bridge.name: davrosnet0
+
+volumes:
+  target-keystore:

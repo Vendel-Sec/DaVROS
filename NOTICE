@@ -1,0 +1,22 @@
+DaVROS
+Copyright 2026 Vendel
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The repository contains no third-party source code. The container images it
+builds install third-party software from upstream package repositories at
+build time, each under its own license:
+
+  ROS 2 (ros:*-ros-base images), sros2, rclpy, message packages    Apache-2.0
+  eProsima Fast DDS, rmw_fastrtps                                  Apache-2.0
+  Eclipse Cyclone DDS, rmw_cyclonedds                              EPL-2.0 OR BSD-3-Clause
+  Eclipse Zenoh, rmw_zenoh, zenoh_security_tools                   EPL-2.0 OR Apache-2.0
+  rosbridge_suite                                                  BSD-3-Clause
+  pydantic, pydantic-settings, PyYAML                              MIT
+  uv                                                               MIT OR Apache-2.0
+  websocat                                                         MIT
+  Ubuntu packages (tcpdump, tshark, dsniff, openssl, ...)          their Debian licenses,
+                                                                   tshark is GPL-2.0-or-later
+
+Anyone who redistributes a built image takes on the obligations of those
+licenses, the GPL ones included.
