@@ -58,6 +58,18 @@ RUN useradd -m -u 1500 -s /bin/bash ros \
     && printf 'source /opt/ros/%s/setup.bash\nPS1="ros@robot-01:~\$ "\n' "${ROS_DISTRO}" > /home/ros/.bashrc \
     && chown ros:ros /home/ros/.bashrc
 
+# The assessor's access, not part of the posture: the account a client hands
+# whoever audits the robot, so the host can be inspected over ssh as a real
+# robot would be. Key-only, no root login, and sudo for the reads that need it.
+# entrypoint.sh generates the keys into the target-access volume.
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server sudo \
+    && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \
+    && useradd -m -u 1600 -s /bin/bash auditor \
+    && usermod -p '*' auditor \
+    && echo "auditor ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/010-auditor \
+    && chmod 0440 /etc/sudoers.d/010-auditor
+COPY simulated_target/sshd_config /etc/ssh/sshd_config.d/10-davros.conf
+
 # Hardened defaults. Every one of them is overridden by target.env.
 ENV ROS_SECURITY_ENABLE=true \
     ROS_SECURITY_STRATEGY=Enforce \

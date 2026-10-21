@@ -16,6 +16,33 @@ echo "=================================================================="
 echo " DaVROS, ROS 2 ${ROS_DISTRO}, simulated target"
 echo "=================================================================="
 
+# --- the assessor's ssh access ------------------------------------------- #
+# Not part of the posture. The keys live in the target-access volume, so a
+# recreate for a new posture keeps the host key the assessor already trusts.
+install -d -m 0755 /access
+install -d -m 0700 /access/host
+[[ -f /access/host/ssh_host_ed25519_key ]] \
+    || ssh-keygen -q -t ed25519 -N '' -C davros-target -f /access/host/ssh_host_ed25519_key
+[[ -f /access/id_ed25519 ]] \
+    || ssh-keygen -q -t ed25519 -N '' -C auditor@davros-target -f /access/id_ed25519
+# uid 1000 is the account in davros-attacker and in tools such as ROS2probe.
+# ssh refuses a private key that anyone but its owner can read.
+chown 1000:1000 /access/id_ed25519 && chmod 0600 /access/id_ed25519
+install -d -o auditor -g auditor -m 0700 /home/auditor/.ssh
+install -o auditor -g auditor -m 0600 /access/id_ed25519.pub /home/auditor/.ssh/authorized_keys
+echo "davros-target $(cut -d' ' -f1,2 /access/host/ssh_host_ed25519_key.pub)" > /access/known_hosts
+# For clients that mount the volume at /target-access, as davros-attacker does.
+cat > /access/ssh_config <<'SSHCONFIG'
+Host davros-target
+    User auditor
+    IdentityFile /target-access/id_ed25519
+    UserKnownHostsFile /target-access/known_hosts
+    StrictHostKeyChecking yes
+    BatchMode yes
+SSHCONFIG
+mkdir -p /run/sshd
+/usr/sbin/sshd || echo "WARNING: sshd did not start, the host is unreachable over ssh" >&2
+
 # --- provision ----------------------------------------------------------- #
 /opt/davros/venv/bin/python -m simulated_target.provisioning.cli || {
     echo "FATAL: provisioning failed" >&2

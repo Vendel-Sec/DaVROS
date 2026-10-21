@@ -17,6 +17,8 @@ services:
       - .:/workspace:cached
       # Read-only view of the keystore the simulated target generated.
       - target-keystore:/target-keystore:ro
+      # The assessor's ssh key and the target's host key: ssh -F /target-access/ssh_config davros-target
+      - target-access:/target-access:ro
     environment:
       ROS_DOMAIN_ID: ${TARGET_DOMAIN_ID:-42}
       RMW_IMPLEMENTATION: rmw_fastrtps_cpp
@@ -47,6 +49,7 @@ services:
       TARGET_RMW: ${TARGET_RMW:-rmw_fastrtps_cpp}
     volumes:
       - target-keystore:/keystore
+      - target-access:/access
     cap_add:
       - SYS_PTRACE
     networks:
@@ -97,3 +100,4 @@ networks:
 
 volumes:
   target-keystore:
+  target-access:

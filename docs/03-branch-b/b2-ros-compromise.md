@@ -19,7 +19,7 @@ $RUN sh -c 'cat /keystore/enclaves/*/key.pem' > /dev/null; echo $?
 
 Exit 0 is the finding: the account holds a cryptographically legitimate participant identity, and if A.1.3 also holds it works on every robot in the fleet. Exit 1 is only meaningful once the first command confirms you are not root. Modes raise the bar but never close this leaf: they stop another local account (T3), not root (T4), and only a key in a TPM or PKCS#11 token is out of root's reach.
 
-In the lab `$RUN` is root. For the T3 view, run it as the ROS account: `docker exec -u ros davros-target sh -c 'cat /keystore/enclaves/*/key.pem' > /dev/null; echo $?`.
+In the lab `$RUN` is root through sudo. For the T3 view, run it as the ROS account. The inner quotes survive ssh joining its arguments into one remote command: `$RUN -u ros sh -c "'cat /keystore/enclaves/*/key.pem'" > /dev/null; echo $?`.
 
 ### B.2.2 Security environment cannot be flipped
 

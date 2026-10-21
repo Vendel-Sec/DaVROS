@@ -53,12 +53,12 @@ def mutate_permissions(posture: Posture, ks: Keystore, grants: list[Grant]) -> s
                 if allow is catch_all:
                     continue
                 # A.3.9, the grant's own domain scope.
-                domains = allow.find("domains")
-                if domains is not None and posture.domains_range:
-                    for child in list(domains):
-                        domains.remove(child)
+                scope = allow.find("domains")
+                if scope is not None and posture.domains_range:
+                    for child in list(scope):
+                        scope.remove(child)
                     lo, _, hi = posture.domains_range.partition("-")
-                    rng = ET.SubElement(domains, "id_range")
+                    rng = ET.SubElement(scope, "id_range")
                     ET.SubElement(rng, "min").text = lo or "0"
                     ET.SubElement(rng, "max").text = hi or lo or "0"
 

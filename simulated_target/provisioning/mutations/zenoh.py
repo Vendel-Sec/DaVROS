@@ -35,6 +35,8 @@ def _single_enclave_policies(policy: Path, work: Path) -> list[tuple[str, Path]]
     for index, enclave in enumerate(p for p in paths if p):
         tree = ET.parse(policy)
         container = tree.getroot().find("enclaves")
+        if container is None:
+            raise ValueError(f"no <enclaves> in {policy}")
         for element in list(container):
             if element.get("path") != enclave:
                 container.remove(element)

@@ -14,7 +14,7 @@ docker compose up -d --build
 docker exec -it davros-attacker bash      # the attacker
 ```
 
-This starts `davros-target`, the robot, and `davros-peer`, its peer, on the `davrosnet` bridge, with `davros-attacker` beside them. The peer stands for whatever the robot talks to off-box: an operator station, or another robot in the fleet. That bridge is the attacker's segment: on the network, no credentials, no account on the robot. [docs/07-davros-topology.md](docs/07-davros-topology.md) diagrams it.
+This starts `davros-target`, the robot, and `davros-peer`, its peer, on the `davrosnet` bridge, with `davros-attacker` beside them. The peer stands for whatever the robot talks to off-box: an operator station, or another robot in the fleet. That bridge is the attacker's segment: on the network, no credentials, no account on the robot. The ssh key at `/target-access` is the assessor's access for host checks ([section 3](#3-validate-a-leaf-by-hand)), not part of that position. [docs/07-davros-topology.md](docs/07-davros-topology.md) diagrams it.
 
 ## 2. Make the target vulnerable
 
@@ -64,13 +64,13 @@ The attacker is set to `jazzy`. The cross-distro runs are documented: [docs/06-c
 
 ## 3. Validate a leaf by hand
 
-Every leaf in [docs/](docs/) documents its manual validation. Those commands read eight variables and assume bash, since zsh does not split `$RUN` into words. For the lab, set them in `davros-attacker`, and set `RUN` on the host too, where the `$RUN` commands run:
+Every leaf in [docs/](docs/) documents its manual validation. Those commands read eight variables and assume bash, since zsh does not split `$RUN` into words. For the lab, set them in `davros-attacker`:
 
 ```sh
 export KEYSTORE=/target-keystore
 export ENVFILE=$KEYSTORE/target.env XMLPROFILE=$KEYSTORE/fastdds_profile.xml
 export DOMAIN=$(sed -n 's/^ROS_DOMAIN_ID=//p' $ENVFILE) IFACE=eth0 TARGET=davros-target ROSUSER=ros
-export RUN="docker exec davros-target"         # from the host; davros-attacker has no docker socket
+export RUN="ssh -F /target-access/ssh_config davros-target sudo -n"   # root on the robot, over ssh
 ```
 
 For a real robot, point them at copies of its files:
@@ -85,6 +85,8 @@ export RUN="ssh pentest@10.20.0.11"
 stat -c '%a %U' $KEYSTORE/enclaves/*/key.pem                 # A.1.4
 $RUN ls -l /dev/shm                                          # B.2.6
 ```
+
+`$RUN` reaches the lab's robot the way it reaches a real one, over ssh. `davros-target` runs an `sshd` for `auditor`, the account a client hands whoever audits the robot: key only, no root login, passwordless sudo. It is how the host is inspected, not part of the posture, so it stays hardened under every preset and B.0.1 passes against it. Its key, the target's host key and an `ssh_config` are in the `target-access` volume, mounted read-only at `/target-access` in `davros-attacker`, and they survive a recreate. Drop `sudo -n` from `$RUN` for what `auditor` itself can do.
 
 ```sh
 # Zenoh target only

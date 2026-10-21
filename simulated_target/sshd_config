@@ -1,0 +1,8 @@
+# The assessor's ssh access to davros-target. Not a posture knob: it is how the
+# host is inspected, so it stays hardened and B.0.1 passes against it.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowUsers auditor
+# In the target-access volume, so recreating the target keeps the host key.
+HostKey /access/host/ssh_host_ed25519_key

@@ -38,7 +38,7 @@ graph LR
 | [B.1](03-branch-b/b1-privileges.md) | Holding the privileges that own the DDS credentials | B.1.0 to B.1.5 | T3 |
 | [B.2](03-branch-b/b2-ros-compromise.md) | Converting host access into ROS compromise | B.2.1 to B.2.7 | T3 to T4 |
 
-Branch B commands run through `$RUN`, the transport that reaches the host: `ssh user@robot` on an engagement, `docker exec davros-target` in the lab.
+Branch B commands run through `$RUN`, the transport that reaches the host: `ssh user@robot` on an engagement, `ssh -F /target-access/ssh_config davros-target sudo -n` in the lab.
 
 ## Sources
 
