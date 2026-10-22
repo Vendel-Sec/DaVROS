@@ -53,6 +53,14 @@ DEPLOYMENT = {
 DEPLOYMENT_DEFAULTS = {"TARGET_ROS_DISTRO": "jazzy", "TARGET_RMW": "rmw_fastrtps_cpp"}
 # The Dockerfile installs rmw_zenoh only where the distro packages it.
 NO_ZENOH = ["humble"]
+# ROS2probe's lab profile per middleware, when DaVROS is its submodule.
+PROBE_TARGETS = WORKSPACE.parent / "targets"
+PROBE_PROFILES = {
+    "rmw_fastrtps_cpp": "sim-lab.yaml",
+    "rmw_cyclonedds_cpp": "sim-lab-cyclone.yaml",
+    "rmw_zenoh_cpp": "sim-lab-zenoh.yaml",
+}
+PROFILE_DOMAIN = re.compile(r"^\s*domain:\s*(\d+)", re.MULTILINE)
 # A preset named <prefix>.<name> applies only on these middlewares.
 PRESET_RMWS = {
     "dds": ["rmw_fastrtps_cpp", "rmw_cyclonedds_cpp"],
@@ -158,6 +166,17 @@ def read_presets() -> list[dict[str, Any]]:
     return presets
 
 
+def read_probe_profiles() -> dict[str, dict[str, str]]:
+    """Each middleware's ROS2probe profile and the domain it expects, if present."""
+    found = {}
+    for rmw, name in PROBE_PROFILES.items():
+        path = PROBE_TARGETS / name
+        if path.is_file():
+            m = PROFILE_DOMAIN.search(path.read_text())
+            found[rmw] = {"path": f"targets/{name}", "domain": m[1] if m else ""}
+    return found
+
+
 def read_deployment() -> dict[str, str]:
     found = read_assignments(DEPLOYMENT_FILE)[0] if DEPLOYMENT_FILE.exists() else {}
     return {k: found.get(k, v) for k, v in DEPLOYMENT_DEFAULTS.items()}
@@ -206,6 +225,7 @@ def state() -> dict[str, Any]:
         "deployment": {
             "values": read_deployment(), "options": DEPLOYMENT, "noZenoh": NO_ZENOH,
         },
+        "probeProfiles": read_probe_profiles(),
         "recreateCommand": " ".join(RECREATE),
     }
 

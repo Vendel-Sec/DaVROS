@@ -113,6 +113,33 @@
   input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   input[type=text].invalid { border-color: var(--err); }
 
+  /* The test command is output to copy, not a setting, so it reads as a terminal.
+     Dark in both themes; the dark theme only deepens it off the page. */
+  .terminal {
+    --term-bg: #1b1d1f; --term-text: #f2f2f2; --term-muted: #adb5bd; --term-border: #2a2e33;
+    background: var(--term-bg); color: var(--term-text); border: 1px solid var(--term-border);
+    border-radius: 8px; margin: 14px 0; padding: 10px 16px 12px;
+  }
+  @media (prefers-color-scheme: dark) { .terminal { --term-bg: #0b0c0d; } }
+  .terminal[hidden] { display: none; }
+  .terminal-head {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px;
+    font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--term-muted);
+    margin-bottom: 8px;
+  }
+  .terminal-sub { text-transform: none; letter-spacing: 0; margin-left: 6px; }
+  .terminal code { display: block; overflow-wrap: anywhere; color: #00bd9d; }
+  .terminal code::before { content: "$ "; color: var(--term-muted); user-select: none; }
+  .terminal-note { color: #e8955c; font-size: 13px; margin-top: 6px; }
+  .terminal-note:empty { display: none; }
+  .terminal-copy {
+    font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; cursor: pointer;
+    background: transparent; color: var(--term-text); border: 1px solid var(--term-muted);
+    border-radius: 6px; padding: 2px 10px;
+  }
+  .terminal-copy:hover { border-color: #00bd9d; color: #00bd9d; }
+  .terminal-copy:focus-visible { outline: 2px solid #00bd9d; outline-offset: 2px; }
+
   .extra { color: var(--muted); }
   details { margin: 14px 0; }
   summary { cursor: pointer; color: var(--muted); }
@@ -157,6 +184,14 @@
   <div id="deployment"></div>
   <div class="presets" id="presets" role="group" aria-label="Presets"></div>
   <p class="preset-desc" id="preset-desc"></p>
+  <section class="terminal" id="tests" hidden>
+    <div class="terminal-head">
+      <span>Run the tests <span class="terminal-sub">from the ROS2probe root, once the target is recreated</span></span>
+      <button class="terminal-copy" id="copy-test">Copy</button>
+    </div>
+    <code class="mono" id="test-command"></code>
+    <div class="terminal-note" id="test-note"></div>
+  </section>
   <div id="form"></div>
   <details>
     <summary>preset.env preview</summary>
@@ -385,6 +420,19 @@ function update() {
   $("save").disabled = !unsaved || invalid;
   $("apply").disabled = invalid;
   $("preview").textContent = previewText();
+  renderTests();
+}
+
+// Shown only when DaVROS sits in a ROS2probe checkout with a profile for this middleware.
+function renderTests() {
+  const profile = state.probeProfiles[deploy.TARGET_RMW];
+  $("tests").hidden = !profile;
+  if (!profile) return;
+  $("test-command").textContent = `docker compose exec probe uv run pytest --target ${profile.path}`;
+  const domain = values.TARGET_DOMAIN_ID;
+  $("test-note").textContent = profile.domain && domain !== profile.domain
+    ? `The target is on domain ${domain}, the profile on ${profile.domain}: set ros.domain: ${domain} in ${profile.path} first.`
+    : "";
 }
 
 function previewText() {
@@ -432,6 +480,9 @@ function setMsg(text, kind = "") {
 }
 
 $("revert").addEventListener("click", () => { values = { ...saved }; deploy = { ...savedDeploy }; preset = matchingPreset(values); render(); setMsg(""); });
+$("copy-test").addEventListener("click", () =>
+  navigator.clipboard.writeText($("test-command").textContent).then(
+    () => setMsg("Test command copied.", "ok"), () => setMsg("Could not copy: select the command instead.", "err")));
 $("save").addEventListener("click", () => submit(false));
 $("apply").addEventListener("click", () => submit(true));
 load().catch((e) => setMsg("Could not load the posture: " + e, "err"));
