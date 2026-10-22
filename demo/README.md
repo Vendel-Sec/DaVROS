@@ -145,7 +145,7 @@ See [a1-authentication.md](../docs/02-branch-a/a1-authentication.md) and [a4-art
 
 ## Troubleshooting
 
-- **No messages, and no error.** The stolen keystore is stale. Every recreate of `target` reprovisions it with a new CA, and keys taken before it no longer authenticate. Delete `demo/evidence/` and repeat steps 1 and 2 after any recreate.
+- **No messages, and no error.** The stolen keystore is stale. `TARGET_REPROVISION=true` is in the baseline, so every recreate of `target` generates a new CA, and keys taken before it no longer authenticate. Delete `demo/evidence/` and repeat steps 1 and 2 after any recreate.
 - **No messages after a posture change.** Check the domain: `echo $ROS_DOMAIN_ID` must match `ROS_DOMAIN_ID` in the stolen `target.env`, which is what `add_enclave_env.sh` uses. Re-source it after a fresh export.
 - **`no keystore with a motion_controller enclave`.** Nothing is unpacked under `demo/evidence/`, or the unpacker put it elsewhere. Pass the path explicitly.
 - **Several exports.** `add_enclave_env.sh` takes the first keystore it finds. Remove older ones or pass a path.
