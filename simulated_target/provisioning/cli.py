@@ -34,11 +34,6 @@ def main() -> int:
     posture = Posture()
     ks_root = posture.keystore
 
-    if (ks_root / ".ready").exists() and not posture.reprovision:
-        print(f"keystore already provisioned at {ks_root}, "
-              "set TARGET_REPROVISION=true to rebuild")
-        return 0
-
     if ks_root.exists():
         for child in ks_root.iterdir():
             if child.is_dir() and not child.is_symlink():

@@ -91,7 +91,6 @@ class Posture(BaseSettings):
     rmw: Literal["rmw_fastrtps_cpp", "rmw_cyclonedds_cpp", "rmw_zenoh_cpp"] = "rmw_fastrtps_cpp"
     keystore: Path = Path("/keystore")
     initial_peer: str = ""
-    reprovision: bool = False
 
     @field_validator("keystore_mode", "key_mode")
     @classmethod
