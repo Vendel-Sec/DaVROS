@@ -40,9 +40,10 @@ Some presets also move the robot off domain 42: `all-open` and `never-configured
 
 It runs on the host with the system Python 3 and nothing to install, from any directory. It shows every knob of `target.env` as a switch, radio buttons or a text field, grouped by branch with the leaves each one decides.
 
+- **Deployment** picks the target's ROS distro and middleware. They go to `.env`, beside `docker-compose.yml`, which compose reads by itself, so a preset never changes them and a plain `docker compose up` uses them too. A preset whose name does not fit the middleware is flagged.
 - **Start from a preset**, or from the hardened baseline, then change any knob.
 - **Save** writes `simulated_target/posture/preset.env` with only the knobs that differ from the baseline. Saving the baseline unchanged removes `preset.env`.
-- **Save and recreate target** also runs `docker compose up -d --force-recreate --wait target peer`, so the target and the peer come back under the new posture. It needs `docker` on the host's `PATH`. Errors also print in the configurator's terminal.
+- **Save and recreate target** also runs `docker compose up -d --force-recreate --wait target peer`, so the target and the peer come back under the new posture. A distro whose image is not built yet is built first, which takes minutes. It needs `docker` on the host's `PATH`. Errors also print in the configurator's terminal.
 
 It listens on `127.0.0.1` and refuses any other `Host` header, because it writes files and drives docker. To reach it through a forwarded name, add `--allow-host <name>`. `--host 0.0.0.0` exposes it to the network; don't.
 

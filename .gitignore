@@ -10,6 +10,8 @@ __pycache__/
 # tracked; preset.env is whichever scenario is currently selected, so it is
 # local state and not configuration.
 simulated_target/posture/preset.env
+# The target's distro and middleware, as the configurator last set them.
+.env
 
 # Filesystem exports, extracted keystores and captures from the demos
 demo/evidence/
