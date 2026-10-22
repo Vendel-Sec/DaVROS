@@ -27,7 +27,7 @@ docker compose up -d --force-recreate --wait target peer
 rm simulated_target/posture/preset.env     # back to hardened
 ```
 
-The presets live in [simulated_target/posture/presets/](simulated_target/posture/presets/), each isolating one leaf or one group of leaves, mostly in branch A (`exposed-rosbridge` is B.0.2, `tls-no-client-auth` needs Zenoh), and `all-open` sets every knob to its vulnerable value. Recreate `peer` with `target`: it reads the keystore only when it starts, and the target reprovisions it.
+The presets live in [simulated_target/posture/presets/](simulated_target/posture/presets/), each isolating one leaf or one group of leaves, mostly in branch A (`exposed-rosbridge` is B.0.2), and `all-open` sets every knob to its vulnerable value. The name says which middleware a preset applies to: `dds.*` on Fast DDS and Cyclone DDS, `zenoh.*` on Zenoh, and the others on all three. Recreate `peer` with `target`: it reads the keystore only when it starts, and the target reprovisions it.
 
 Some presets also move the robot off domain 42: `all-open` and `never-configured` put it on 0. `davros-attacker` does not follow, because finding the domain is part of A.0.6. Read it from `/target-keystore/target.env`, or scan for it, then `export ROS_DOMAIN_ID=0` in `davros-attacker`.
 

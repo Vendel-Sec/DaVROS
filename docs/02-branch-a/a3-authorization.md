@@ -99,7 +99,7 @@ xmllint --xpath '//*[local-name()="allow_unauthenticated_participants"]/text()' 
 
 `true` is the finding, and it is the single most damaging switch in the document: it voids the whole of A.1 however well PKI-DH is configured.
 
-**Example**, the lab in its `unauthenticated-join` posture:
+**Example**, the lab in its `dds.unauthenticated-join` posture:
 
 ```
 true
@@ -221,7 +221,7 @@ xmllint --xpath '//*[local-name()="topic_expression"]/text()' /tmp/governance.xm
 
 Order is the whole check, so read the output *in document order* and find where `*` sits. A `*` rule before any specific rule shadows every one of them — first match wins — and silently disables the topic policy. The template ships exactly one `*` rule, so this appears the moment specific rules are added below it instead of above.
 
-**Example**, the lab in its `wildcard-permissions` posture:
+**Example**, the lab in its `dds.wildcard-permissions` posture:
 
 ```
 *

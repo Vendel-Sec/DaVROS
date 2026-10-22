@@ -89,7 +89,7 @@ tshark -r /tmp/rtps.pcap -Y rtps -T fields -e rtps.sm.id
 
 Plain `DATA` submessages are the finding. `SEC_PREFIX`, `SEC_BODY` and `SRTPS_PREFIX` are the protected forms. An empty capture proves nothing on its own — co-located nodes use shared memory, and the traffic never reaches `$IFACE`.
 
-**Example**, the lab in its `no-encryption` posture:
+**Example**, the lab in its `dds.no-encryption` posture:
 
 ```
 NONE
@@ -125,7 +125,7 @@ strings /tmp/rtps.pcap | grep -E 'rt/|geometry_msgs|sensor_msgs'
 
 Readable ROS topic or type names on the wire is the finding, and it is the same one A.2.3 states from the document side. This is the version that goes in a report, because it is what the attacker actually read.
 
-**Example**, the lab in its `no-encryption` posture:
+**Example**, the lab in its `dds.no-encryption` posture:
 
 ```
 NONE

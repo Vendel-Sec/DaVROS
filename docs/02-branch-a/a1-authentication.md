@@ -64,7 +64,7 @@ zq $ZROUTER transport.link.tls.enable_mtls
 
 `true` on both is clean. Anything else means peers are not authenticated: with no TLS any host joins, and with TLS but no mTLS any host joins without a certificate.
 
-Then dial the router with no certificate. Only a certificate alert passes. The `tls-no-client-auth` preset produces this leaf.
+Then dial the router with no certificate. Only a certificate alert passes. The `zenoh.tls-no-client-auth` preset produces this leaf.
 
 ```sh
 sleep 2 | openssl s_client -connect $TARGET:7447 2>&1 | grep -E 'client certificate CA names|alert'
@@ -72,7 +72,7 @@ sleep 2 | openssl s_client -connect $TARGET:7447 2>&1 | grep -E 'client certific
 
 Under TLS 1.3 the alert arrives after the handshake, hence the `sleep`. `Acceptable client certificate CA names` followed by `tlsv13 alert certificate required` is clean. `No client certificate CA names sent` and no alert is the finding.
 
-**Example**, the lab on Zenoh in its `tls-no-client-auth` posture:
+**Example**, the lab on Zenoh in its `zenoh.tls-no-client-auth` posture:
 
 ```
 No client certificate CA names sent
