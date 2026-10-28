@@ -6,6 +6,9 @@ over the hardened target.env, and can recreate the target so it takes effect.
 The form is built from target.env itself: its comments give each knob its help
 text, its leaves and its section, so a knob added there shows up here.
 
+The target's ROS distro and middleware are not posture: compose reads them
+itself, from .env beside docker-compose.yml, so no preset changes them.
+
     ./configurator.py                                    # http://127.0.0.1:8765
     ./configurator.py --port 9000                        # another port
 
@@ -18,6 +21,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import re
 import subprocess
 import threading
@@ -33,13 +37,35 @@ BASELINE = POSTURE / "target.env"
 OVERLAY = POSTURE / "preset.env"
 PRESETS = POSTURE / "presets"
 PAGE = POSTURE / "configurator.html"
+DEPLOYMENT_FILE = WORKSPACE / ".env"
 # The peer reads the keystore once, at start, and a recreated target
 # reprovisions it, so the peer is recreated too. Compose only acts on the
 # services it is given, never on their dependents.
-RECREATE = [
-    "docker", "compose", "-f", "docker-compose.yml",
-    "up", "-d", "--force-recreate", "--wait", "target", "peer",
-]
+UP = ["docker", "compose", "-f", "docker-compose.yml", "up", "-d", "--force-recreate", "--wait"]
+SERVICES = ["target", "peer"]
+RECREATE = UP + SERVICES
+
+# Compose's own variables, with the defaults docker-compose.yml gives them.
+DEPLOYMENT = {
+    "TARGET_ROS_DISTRO": ["humble", "jazzy", "kilted", "lyrical"],
+    "TARGET_RMW": ["rmw_fastrtps_cpp", "rmw_cyclonedds_cpp", "rmw_zenoh_cpp"],
+}
+DEPLOYMENT_DEFAULTS = {"TARGET_ROS_DISTRO": "jazzy", "TARGET_RMW": "rmw_fastrtps_cpp"}
+# The Dockerfile installs rmw_zenoh only where the distro packages it.
+NO_ZENOH = ["humble"]
+# ROS2probe's lab profile per middleware, when DaVROS is its submodule.
+PROBE_TARGETS = WORKSPACE.parent / "targets"
+PROBE_PROFILES = {
+    "rmw_fastrtps_cpp": "sim-lab.yaml",
+    "rmw_cyclonedds_cpp": "sim-lab-cyclone.yaml",
+    "rmw_zenoh_cpp": "sim-lab-zenoh.yaml",
+}
+PROFILE_DOMAIN = re.compile(r"^\s*domain:\s*(\d+)", re.MULTILINE)
+# A preset named <prefix>.<name> applies only on these middlewares.
+PRESET_RMWS = {
+    "dds": ["rmw_fastrtps_cpp", "rmw_cyclonedds_cpp"],
+    "zenoh": ["rmw_zenoh_cpp"],
+}
 
 PROTECTION = ["NONE", "SIGN", "ENCRYPT"]
 # Knobs with a closed set of values, rendered as radio buttons. true/false knobs
@@ -60,6 +86,7 @@ CHOICES = {
 ONLY_WHEN = {
     "TARGET_KEY_BITS": ("TARGET_KEY_TYPE", "rsa"),
     "TARGET_ROSBRIDGE_ENCLAVE": ("TARGET_ROSBRIDGE", "true"),
+    "TARGET_ZENOH_MTLS": ("TARGET_RMW", "rmw_zenoh_cpp"),
 }
 
 ASSIGN = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
@@ -129,12 +156,59 @@ def read_presets() -> list[dict[str, Any]]:
     presets = []
     for path in sorted(PRESETS.glob("*.env")):
         values, preamble = read_assignments(path)
+        prefix, dot, _ = path.stem.partition(".")
         presets.append({
             "name": path.stem,
             "description": " ".join(preamble),
             "values": values,
+            "rmws": PRESET_RMWS.get(prefix) if dot else None,
         })
     return presets
+
+
+def read_probe_profiles() -> dict[str, dict[str, str]]:
+    """Each middleware's ROS2probe profile and the domain it expects, if present."""
+    found = {}
+    for rmw, name in PROBE_PROFILES.items():
+        path = PROBE_TARGETS / name
+        if path.is_file():
+            m = PROFILE_DOMAIN.search(path.read_text())
+            found[rmw] = {"path": f"targets/{name}", "domain": m[1] if m else ""}
+    return found
+
+
+def read_deployment() -> dict[str, str]:
+    found = read_assignments(DEPLOYMENT_FILE)[0] if DEPLOYMENT_FILE.exists() else {}
+    return {k: found.get(k, v) for k, v in DEPLOYMENT_DEFAULTS.items()}
+
+
+def validate_deployment(values: dict[str, Any]) -> dict[str, str]:
+    if unknown := set(values) - set(DEPLOYMENT):
+        raise ValueError(f"unknown deployment settings: {', '.join(sorted(unknown))}")
+    clean = {**read_deployment(), **values}
+    for name, options in DEPLOYMENT.items():
+        if clean[name] not in options:
+            raise ValueError(f"{name}: must be one of {', '.join(options)}")
+    if clean["TARGET_RMW"] == "rmw_zenoh_cpp" and clean["TARGET_ROS_DISTRO"] in NO_ZENOH:
+        raise ValueError(f"rmw_zenoh_cpp is not packaged for {clean['TARGET_ROS_DISTRO']}")
+    return clean
+
+
+def write_deployment(values: dict[str, str]) -> str:
+    """Set the deployment in .env, keeping whatever else the file holds."""
+    if values == read_deployment():
+        return ""
+    lines = (DEPLOYMENT_FILE.read_text().splitlines() if DEPLOYMENT_FILE.exists() else [
+        "# Written by configurator.py. Read by docker compose itself: the target's",
+        "# ROS distro and middleware.",
+    ])
+    pending = dict(values)
+    for i, line in enumerate(lines):
+        if (m := ASSIGN.match(line.strip())) and m[1] in pending:
+            lines[i] = f"{m[1]}={pending.pop(m[1])}"
+    lines += [f"{k}={v}" for k, v in pending.items()]
+    DEPLOYMENT_FILE.write_text("\n".join(lines) + "\n")
+    return f"Deployment: {values['TARGET_ROS_DISTRO']}, {values['TARGET_RMW']}."
 
 
 def state() -> dict[str, Any]:
@@ -148,6 +222,10 @@ def state() -> dict[str, Any]:
         "presets": read_presets(),
         "overlay": OVERLAY.exists(),
         "extra": {k: v for k, v in overlay.items() if k not in known},
+        "deployment": {
+            "values": read_deployment(), "options": DEPLOYMENT, "noZenoh": NO_ZENOH,
+        },
+        "probeProfiles": read_probe_profiles(),
         "recreateCommand": " ".join(RECREATE),
     }
 
@@ -218,23 +296,31 @@ def report_error(what: str, detail: str = "") -> None:
 
 
 def recreate_target() -> tuple[bool, str]:
-    command = " ".join(RECREATE)
     if not recreating.acquire(blocking=False):
         report_error("recreate refused: another one is already running")
         return False, "A recreate is already running."
+    # .env decides the deployment, not a value left in this process's shell.
+    env = {k: v for k, v in os.environ.items() if k not in DEPLOYMENT}
+    argv, minutes = RECREATE, 10
     try:
+        # A distro never built here: build it first, which takes minutes.
+        image = f"davros-target:{read_deployment()['TARGET_ROS_DISTRO']}"
+        if subprocess.run(["docker", "image", "inspect", image], capture_output=True,
+                          check=False).returncode != 0:
+            argv, minutes = UP + ["--build"] + SERVICES, 30
         run = subprocess.run(
-            RECREATE, cwd=WORKSPACE, capture_output=True, text=True,
-            timeout=600, check=False,
+            argv, cwd=WORKSPACE, env=env, capture_output=True, text=True,
+            timeout=minutes * 60, check=False,
         )
     except FileNotFoundError:
-        report_error("recreate failed: docker is not on PATH", command)
-        return False, "docker is not on PATH. Run this where it is:\n" + command
+        report_error("recreate failed: docker is not on PATH", " ".join(argv))
+        return False, "docker is not on PATH. Run this where it is:\n" + " ".join(argv)
     except subprocess.TimeoutExpired:
-        report_error("recreate failed: no exit within 10 minutes", command)
-        return False, "docker compose did not finish within 10 minutes."
+        report_error(f"recreate failed: no exit within {minutes} minutes", " ".join(argv))
+        return False, f"docker compose did not finish within {minutes} minutes."
     finally:
         recreating.release()
+    command = " ".join(argv)
     output = (run.stdout + run.stderr).strip()
     if run.returncode != 0:
         report_error(f"recreate failed: exit {run.returncode}", f"{command}\n{output}")
@@ -293,13 +379,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            deployment = validate_deployment(body.get("deployment", {}))
             message = write_overlay(body.get("values", {}), body.get("preset"))
+            message = " ".join(filter(None, [write_deployment(deployment), message]))
         except (ValueError, AttributeError) as exc:
             report_error("save refused", str(exc))
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
         except OSError as exc:
-            report_error("could not write preset.env", str(exc))
+            report_error("could not write preset.env or .env", str(exc))
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
             return
         ok, output = True, ""

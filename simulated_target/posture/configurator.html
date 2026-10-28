@@ -44,7 +44,9 @@
   }
   .chip:hover { border-color: var(--accent); }
   .chip.active { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
+  .chip.mismatch:not(.active) { border-style: dashed; color: var(--subtle); }
   .preset-desc { color: var(--muted); min-height: 1.45em; margin: 0 0 12px; }
+  .mismatch-note { color: var(--changed-text); }
 
   section.card {
     background: var(--surface); border: 1px solid var(--border-strong);
@@ -71,7 +73,7 @@
   .help { color: var(--muted); font-size: 13px; }
   .var { color: var(--subtle); font-size: 12px; }
   .baseline { color: var(--changed-text); font-size: 12px; }
-  .baseline button {
+  .baseline button, .mismatch-note button {
     border: 0; background: none; color: inherit; text-decoration: underline;
     cursor: pointer; font: inherit; padding: 0;
   }
@@ -102,6 +104,7 @@
   .radios label:first-child span { border-left: 0; }
   .radios input:checked + span { background: var(--accent-strong); color: var(--on-accent); }
   .radios input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .radios input:disabled + span { opacity: .4; cursor: not-allowed; }
 
   input[type=text] {
     font: inherit; padding: 4px 8px; width: 180px; color: var(--text);
@@ -109,6 +112,33 @@
   }
   input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   input[type=text].invalid { border-color: var(--err); }
+
+  /* The test command is output to copy, not a setting, so it reads as a terminal.
+     Dark in both themes; the dark theme only deepens it off the page. */
+  .terminal {
+    --term-bg: #1b1d1f; --term-text: #f2f2f2; --term-muted: #adb5bd; --term-border: #2a2e33;
+    background: var(--term-bg); color: var(--term-text); border: 1px solid var(--term-border);
+    border-radius: 8px; margin: 14px 0; padding: 10px 16px 12px;
+  }
+  @media (prefers-color-scheme: dark) { .terminal { --term-bg: #0b0c0d; } }
+  .terminal[hidden] { display: none; }
+  .terminal-head {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px;
+    font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--term-muted);
+    margin-bottom: 8px;
+  }
+  .terminal-sub { text-transform: none; letter-spacing: 0; margin-left: 6px; }
+  .terminal code { display: block; overflow-wrap: anywhere; color: #00bd9d; }
+  .terminal code::before { content: "$ "; color: var(--term-muted); user-select: none; }
+  .terminal-note { color: #e8955c; font-size: 13px; margin-top: 6px; }
+  .terminal-note:empty { display: none; }
+  .terminal-copy {
+    font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; cursor: pointer;
+    background: transparent; color: var(--term-text); border: 1px solid var(--term-muted);
+    border-radius: 6px; padding: 2px 10px;
+  }
+  .terminal-copy:hover { border-color: #00bd9d; color: #00bd9d; }
+  .terminal-copy:focus-visible { outline: 2px solid #00bd9d; outline-offset: 2px; }
 
   .extra { color: var(--muted); }
   details { margin: 14px 0; }
@@ -147,11 +177,21 @@
 <header>
   <h1>DaVROS posture</h1>
   <p class="sub">Writes <code>simulated_target/posture/preset.env</code> over the hardened
-    <code>target.env</code>. Highlighted knobs differ from the baseline.</p>
+    <code>target.env</code>, and the distro and middleware to <code>.env</code>.
+    Highlighted knobs differ from the baseline.</p>
 </header>
 <main>
+  <div id="deployment"></div>
   <div class="presets" id="presets" role="group" aria-label="Presets"></div>
   <p class="preset-desc" id="preset-desc"></p>
+  <section class="terminal" id="tests" hidden>
+    <div class="terminal-head">
+      <span>Run the tests <span class="terminal-sub">from the ROS2probe root, once the target is recreated</span></span>
+      <button class="terminal-copy" id="copy-test">Copy</button>
+    </div>
+    <code class="mono" id="test-command"></code>
+    <div class="terminal-note" id="test-note"></div>
+  </section>
   <div id="form"></div>
   <details>
     <summary>preset.env preview</summary>
@@ -179,6 +219,15 @@ let state = null;      // as served by /api/state
 let saved = {};        // values in effect on disk
 let values = {};       // values in the form
 let preset = null;     // preset the form started from, if any
+let savedDeploy = {};  // distro and middleware in .env
+let deploy = {};       // distro and middleware in the form
+
+const DEPLOY_TEXT = {
+  TARGET_ROS_DISTRO: ["ROS distro", "The attacker stays on jazzy, so another distro makes the lab "
+    + "cross-distro. One not built yet is built on recreate, which takes minutes."],
+  TARGET_RMW: ["Middleware", "dds.* presets apply to Fast DDS and Cyclone DDS, zenoh.* to Zenoh, "
+    + "the others to all three. humble has no Zenoh."],
+};
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, attrs = {}, ...children) => {
@@ -206,8 +255,44 @@ function adopt(s) {
   state = s;
   saved = Object.fromEntries(s.knobs.map((k) => [k.name, k.value]));
   values = { ...saved };
+  savedDeploy = { ...s.deployment.values };
+  deploy = { ...savedDeploy };
   preset = matchingPreset(saved);
   render();
+}
+
+// Whether the image can be built with this setting, given the others.
+function allowed(name, value) {
+  const d = { ...deploy, [name]: value };
+  return !(d.TARGET_RMW === "rmw_zenoh_cpp" && state.deployment.noZenoh.includes(d.TARGET_ROS_DISTRO));
+}
+
+const fits = (p) => !p.rmws || p.rmws.includes(deploy.TARGET_RMW);
+
+function setDeploy(name, value) {
+  deploy[name] = value;
+  renderDeployment();
+  renderPresets();
+  update();
+}
+
+function renderDeployment() {
+  $("deployment").replaceChildren(el("section", { class: "card" }, el("h2", {}, "Deployment"),
+    Object.entries(state.deployment.options).map(([name, options]) => {
+      const id = `d-${name}`;
+      const [label, help] = DEPLOY_TEXT[name];
+      return el("div", { class: "row" },
+        el("div", {},
+          el("span", { class: "name", id: `${id}-label` }, label),
+          el("div", { class: "help" }, help),
+          el("div", { class: "var mono" }, name)),
+        el("div", { class: "control" },
+          el("div", { class: "radios", role: "radiogroup", "aria-labelledby": `${id}-label` },
+            options.map((o) => el("label", {},
+              el("input", { type: "radio", name: id, value: o, checked: deploy[name] === o,
+                            disabled: !allowed(name, o), onchange: () => setDeploy(name, o) }),
+              el("span", { class: "mono" }, o))))));
+    })));
 }
 
 function presetValues(p) {
@@ -222,6 +307,7 @@ function matchingPreset(v) {
 }
 
 function render() {
+  renderDeployment();
   renderPresets();
   const form = $("form");
   form.replaceChildren();
@@ -249,14 +335,22 @@ function renderPresets() {
       onclick: () => { values = baselineValues(); preset = null; render(); },
     }, "hardened"),
     ...state.presets.map((p) => el("button", {
-      class: "chip" + (preset === p.name ? " active" : ""), "aria-pressed": String(preset === p.name),
-      title: p.description,
+      class: "chip" + (preset === p.name ? " active" : "") + (fits(p) ? "" : " mismatch"),
+      "aria-pressed": String(preset === p.name),
+      title: p.description + (fits(p) ? "" : ` Needs ${p.rmws.join(" or ")}.`),
       onclick: () => { values = presetValues(p); preset = p.name; render(); },
     }, p.name)),
   );
   const current = state.presets.find((p) => p.name === preset);
-  $("preset-desc").textContent = current ? current.description
-    : isBaseline ? "Every knob at its hardened value." : "Custom posture.";
+  $("preset-desc").replaceChildren(current ? current.description
+    : isBaseline ? "Every knob at its hardened value." : "Custom posture.");
+  if (current && !fits(current)) {
+    const to = current.rmws.find((r) => allowed("TARGET_RMW", r));
+    $("preset-desc").append(" ", el("span", { class: "mismatch-note" },
+      `Needs ${current.rmws.join(" or ")}, and the target is on ${deploy.TARGET_RMW}. `,
+      to ? el("button", { onclick: () => setDeploy("TARGET_RMW", to) }, `Switch to ${to}`)
+         : `${deploy.TARGET_ROS_DISTRO} has none of them.`));
+  }
 }
 
 function row(k) {
@@ -312,19 +406,33 @@ function update() {
     unsaved += values[k.name] !== saved[k.name];
     invalid ||= !valid(k, values[k.name]);
     r.classList.toggle("changed", differs);
-    r.classList.toggle("inactive", !!k.onlyWhen && values[k.onlyWhen[0]] !== k.onlyWhen[1]);
+    r.classList.toggle("inactive", !!k.onlyWhen && { ...deploy, ...values }[k.onlyWhen[0]] !== k.onlyWhen[1]);
     const note = r.querySelector(".baseline");
     note.replaceChildren(...(differs ? [
       `baseline: ${k.baseline || "(empty)"} · `,
       el("button", { onclick: () => { values[k.name] = k.baseline; preset = matchingPreset(values); render(); } }, "reset"),
     ] : []));
   }
+  for (const name of Object.keys(deploy)) unsaved += deploy[name] !== savedDeploy[name];
   $("count").textContent = (changed ? `${changed} knob${changed > 1 ? "s" : ""} weakened from baseline` : "Hardened baseline")
     + (unsaved ? ` · ${unsaved} unsaved` : "");
   $("revert").disabled = !unsaved;
   $("save").disabled = !unsaved || invalid;
   $("apply").disabled = invalid;
   $("preview").textContent = previewText();
+  renderTests();
+}
+
+// Shown only when DaVROS sits in a ROS2probe checkout with a profile for this middleware.
+function renderTests() {
+  const profile = state.probeProfiles[deploy.TARGET_RMW];
+  $("tests").hidden = !profile;
+  if (!profile) return;
+  $("test-command").textContent = `docker compose exec probe uv run pytest --target ${profile.path}`;
+  const domain = values.TARGET_DOMAIN_ID;
+  $("test-note").textContent = profile.domain && domain !== profile.domain
+    ? `The target is on domain ${domain}, the profile on ${profile.domain}: set ros.domain: ${domain} in ${profile.path} first.`
+    : "";
 }
 
 function previewText() {
@@ -340,7 +448,7 @@ async function submit(recreate) {
   try {
     const res = await fetch("/api/apply", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values, preset, recreate }),
+      body: JSON.stringify({ values, preset, recreate, deployment: deploy }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error);
@@ -371,7 +479,10 @@ function setMsg(text, kind = "") {
   $("msg").className = "msg " + kind;
 }
 
-$("revert").addEventListener("click", () => { values = { ...saved }; preset = matchingPreset(values); render(); setMsg(""); });
+$("revert").addEventListener("click", () => { values = { ...saved }; deploy = { ...savedDeploy }; preset = matchingPreset(values); render(); setMsg(""); });
+$("copy-test").addEventListener("click", () =>
+  navigator.clipboard.writeText($("test-command").textContent).then(
+    () => setMsg("Test command copied.", "ok"), () => setMsg("Could not copy: select the command instead.", "err")));
 $("save").addEventListener("click", () => submit(false));
 $("apply").addEventListener("click", () => submit(true));
 load().catch((e) => setMsg("Could not load the posture: " + e, "err"));

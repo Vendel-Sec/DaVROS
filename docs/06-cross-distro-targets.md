@@ -6,7 +6,7 @@ The attacker, `davros-attacker`, is always `jazzy`. Any other target distro make
 
 ### Selecting the distro
 
-`TARGET_ROS_DISTRO` is a build argument on the simulated target, default `jazzy`.
+`TARGET_ROS_DISTRO` is a build argument on the simulated target, default `jazzy`. The configurator sets it in `.env`, under Deployment, and builds the image on recreate when it is missing. By hand:
 
 ```
 TARGET_ROS_DISTRO=humble docker compose \
