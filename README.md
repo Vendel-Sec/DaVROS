@@ -7,6 +7,10 @@ DaVROS is self-contained. Tools such as ROS2probe can use it as a practice targe
 > [!WARNING]
 > DaVROS is vulnerable on purpose. Run it on a machine and network you control, never alongside a real robot's domain, and keep it off shared networks. The presets disable DDS-Security, weaken file modes and, with `TARGET_ROSBRIDGE=true`, open an unauthenticated rosbridge WebSocket. The compose file publishes that WebSocket on `127.0.0.1:9090` only. Use the leaves against a real robot only with written authorization.
 
+## AI disclosure
+
+This project was developed with the assistance of AI tools (Anthropic Claude) and was reviewed and modified by the maintainers.
+
 ## 1. Start the lab
 
 ```sh
